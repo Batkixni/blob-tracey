@@ -25,6 +25,19 @@ class App {
   private frameCount = 0;
   private currentFps = 60.0;
 
+  // Zoom & Pan Viewport State
+  private zoom = 1.0;
+  private panX = 0;
+  private panY = 0;
+  private isPanning = false;
+  private panStartX = 0;
+  private panStartY = 0;
+  private hasMovedDuringPan = false;
+  private isSpaceDown = false;
+  private canvasWrapper!: HTMLElement;
+  private viewport!: HTMLElement;
+  private hudZoom!: HTMLElement;
+
   constructor() {
     this.canvas = document.getElementById('mainCanvas') as HTMLCanvasElement;
     this.ctx = this.canvas.getContext('2d', { willReadFrequently: true })!;
@@ -44,6 +57,7 @@ class App {
 
     this.initEventListeners();
     this.initEyedropper();
+    this.initZoomAndPan();
 
     // Start in empty state: artist selects or drops their image first
     this.showCanvasWorkspace(false);
@@ -92,6 +106,7 @@ class App {
 
       if (file.type.startsWith('image/')) {
         await this.videoSource.loadUserImageFile(file);
+        this.resetZoom();
         this.showCanvasWorkspace(true);
       }
     });
@@ -116,6 +131,7 @@ class App {
     btnReset.addEventListener('click', () => {
       this.config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
       this.controlPanel.setConfig(this.config);
+      this.resetZoom();
     });
 
     // Snapshot Lossless PNG Export
@@ -148,6 +164,7 @@ class App {
         const file = files[0];
         if (file.type.startsWith('image/')) {
           await this.videoSource.loadUserImageFile(file);
+          this.resetZoom();
           this.showCanvasWorkspace(true);
         } else if (file.name.endsWith('.json')) {
           this.importConfigJson(file);
@@ -205,7 +222,7 @@ class App {
     if (!dropper) return;
 
     this.canvas.addEventListener('mousemove', (e) => {
-      if (this.config.detection.mode !== 'color_key') {
+      if (this.config.detection.mode !== 'color_key' || this.isPanning) {
         dropper.style.display = 'none';
         return;
       }
@@ -221,6 +238,7 @@ class App {
 
     this.canvas.addEventListener('click', (e) => {
       if (this.config.detection.mode !== 'color_key') return;
+      if (this.hasMovedDuringPan) return;
 
       const rect = this.canvas.getBoundingClientRect();
       const scaleX = this.canvas.width / rect.width;
@@ -234,6 +252,140 @@ class App {
         const hex = `#${((1 << 24) + (pixel[0] << 16) + (pixel[1] << 8) + pixel[2]).toString(16).slice(1)}`;
         this.config.detection.keyColor = hex;
         this.controlPanel.renderAllControls();
+      }
+    });
+  }
+
+  private applyTransform() {
+    if (this.canvasWrapper) {
+      this.canvasWrapper.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.zoom})`;
+    }
+    if (this.hudZoom) {
+      this.hudZoom.textContent = `${Math.round(this.zoom * 100)}%`;
+    }
+  }
+
+  private resetZoom() {
+    this.zoom = 1.0;
+    this.panX = 0;
+    this.panY = 0;
+    this.applyTransform();
+  }
+
+  private initZoomAndPan() {
+    this.canvasWrapper = document.getElementById('canvasWrapper')!;
+    this.viewport = document.getElementById('viewport')!;
+    this.hudZoom = document.getElementById('hudZoom')!;
+    const btnZoomReset = document.getElementById('btnZoomReset');
+
+    btnZoomReset?.addEventListener('click', () => {
+      this.resetZoom();
+    });
+
+    // Double-click on viewport/canvas to reset zoom and center
+    this.viewport.addEventListener('dblclick', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('.viewport-hud-bar')) return;
+      if (this.videoSource.hasSource()) {
+        this.resetZoom();
+      }
+    });
+
+    // Mouse wheel zoom centered under cursor
+    this.viewport.addEventListener('wheel', (e: WheelEvent) => {
+      if (!this.videoSource.hasSource()) return;
+      e.preventDefault();
+
+      const prevZoom = this.zoom;
+      // Scrolling up zooms in, down zooms out
+      const factor = e.deltaY < 0 ? 1.15 : 0.87;
+      const nextZoom = Math.min(10.0, Math.max(0.15, prevZoom * factor));
+
+      if (Math.abs(nextZoom - prevZoom) < 0.001) return;
+
+      const rect = this.canvasWrapper.getBoundingClientRect();
+      const currCenterX = rect.left + rect.width / 2;
+      const currCenterY = rect.top + rect.height / 2;
+
+      const ratio = nextZoom / prevZoom;
+      this.panX += (1 - ratio) * (e.clientX - currCenterX);
+      this.panY += (1 - ratio) * (e.clientY - currCenterY);
+      this.zoom = nextZoom;
+
+      this.applyTransform();
+    }, { passive: false });
+
+    // Spacebar listener for Photoshop Hand Tool
+    window.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.code === 'Space' && !['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
+        this.isSpaceDown = true;
+        if (this.videoSource.hasSource() && !this.isPanning) {
+          this.viewport.style.cursor = 'grab';
+        }
+      }
+    });
+
+    window.addEventListener('keyup', (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        this.isSpaceDown = false;
+        if (!this.isPanning) {
+          this.viewport.style.cursor = '';
+        }
+      }
+    });
+
+    // Start panning with Middle click, Right click, Space+Left, or Left drag
+    this.viewport.addEventListener('mousedown', (e: MouseEvent) => {
+      if (!this.videoSource.hasSource()) return;
+      if ((e.target as HTMLElement).closest('.viewport-hud-bar')) return;
+
+      const isMiddle = e.button === 1;
+      const isRight = e.button === 2;
+      const isSpaceLeft = e.button === 0 && this.isSpaceDown;
+      const isBackgroundLeft = e.button === 0 && (e.target === this.viewport || e.target === this.canvasWrapper);
+      const isCanvasLeft = e.button === 0 && e.target === this.canvas;
+
+      if (isMiddle || isRight || isSpaceLeft || isBackgroundLeft || isCanvasLeft) {
+        this.isPanning = true;
+        this.hasMovedDuringPan = false;
+        this.panStartX = e.clientX;
+        this.panStartY = e.clientY;
+        this.viewport.style.cursor = 'grabbing';
+        if (isMiddle || isRight) {
+          e.preventDefault();
+        }
+      }
+    });
+
+    window.addEventListener('mousemove', (e: MouseEvent) => {
+      if (!this.isPanning) return;
+
+      const dx = e.clientX - this.panStartX;
+      const dy = e.clientY - this.panStartY;
+
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        this.hasMovedDuringPan = true;
+      }
+
+      this.panX += dx;
+      this.panY += dy;
+      this.panStartX = e.clientX;
+      this.panStartY = e.clientY;
+
+      this.applyTransform();
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (this.isPanning) {
+        this.isPanning = false;
+        this.viewport.style.cursor = this.isSpaceDown ? 'grab' : '';
+      }
+    });
+
+    // Prevent default context menu if user dragged with right click
+    this.viewport.addEventListener('contextmenu', (e: MouseEvent) => {
+      if (this.hasMovedDuringPan || this.isPanning) {
+        e.preventDefault();
       }
     });
   }

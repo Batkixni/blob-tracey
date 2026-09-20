@@ -209,7 +209,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(26, 26, 26, 0.85);
+  background: rgba(26, 26, 26, 0.88);
   border: 1px solid var(--border-main);
   padding: 3px 8px;
   border-radius: 2px;
@@ -217,7 +217,8 @@ body {
   font-size: 10px;
   color: var(--text-secondary);
   z-index: 20;
-  pointer-events: none;
+  pointer-events: auto;
+  backdrop-filter: blur(4px);
 }
 
 .hud-item b {
@@ -227,6 +228,32 @@ body {
 
 .hud-sep {
   color: #444444;
+}
+
+.hud-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 1px 5px;
+  border-radius: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transition: all 0.12s;
+}
+
+.hud-btn:hover {
+  background: #333333;
+  border-color: var(--border-light);
+  color: #ffffff;
+}
+
+.hud-btn b {
+  color: #ffffff;
+  font-weight: 600;
 }
 
 /* Canvas Wrapper */
@@ -240,6 +267,9 @@ body {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
   border: 1px solid var(--border-main);
   background: #000000;
+  transform-origin: center center;
+  will-change: transform;
+  user-select: none;
 }
 
 .sidebar.collapsed ~ .viewport-container .canvas-wrapper,
@@ -252,6 +282,7 @@ body {
   max-width: 100%;
   max-height: calc(100vh - 70px);
   object-fit: contain;
+  user-select: none;
 }
 
 /* Empty State Prompt: Directs artist to choose image first */
