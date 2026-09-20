@@ -1,5 +1,5 @@
 {
-  "name": "web-blob-tracker",
+  "name": "blob-tracey",
   "compatibility_date": "2024-09-23",
   "assets": {
     "directory": "./dist"
