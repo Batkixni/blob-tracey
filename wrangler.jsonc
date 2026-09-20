@@ -1,0 +1,13 @@
+{
+  "name": "web-blob-tracker",
+  "compatibility_date": "2024-09-23",
+  "assets": {
+    "directory": "./dist"
+  },
+  "routes": [
+    {
+      "pattern": "t.bax.vision",
+      "custom_domain": true
+    }
+  ]
+}

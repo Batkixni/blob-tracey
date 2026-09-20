@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Blob Tracker — Machine Vision & Overlay Tool</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <!-- Top Photoshop-style Menu / Tool Bar -->
+    <header class="top-bar">
+      <div class="brand">
+        <span class="brand-title">BLOB TRACKER</span>
+        <span class="brand-version">PRO</span>
+      </div>
+
+      <div class="tool-group">
+        <button id="btnUpload" class="btn btn-primary" title="開啟本機圖片檔案">
+          <span>開啟圖片</span>
+        </button>
+        <input type="file" id="fileInput" accept="image/*" style="display: none;" />
+      </div>
+
+      <div class="tool-actions">
+        <button id="btnImportJson" class="btn" title="匯入 JSON 參數設定檔">
+          <span>匯入參數 (JSON)</span>
+        </button>
+        <input type="file" id="jsonFileInput" accept=".json,application/json" style="display: none;" />
+        <button id="btnExportJson" class="btn" title="將目前參數匯出為 JSON 設定檔">
+          <span>匯出參數 (JSON)</span>
+        </button>
+        <button id="btnReset" class="btn" title="恢復初始設定">
+          <span>重設參數</span>
+        </button>
+        <div class="bar-divider"></div>
+        <button id="btnToggleSidebar" class="btn" title="收合或展開參數面板">
+          <span>收合面板 «</span>
+        </button>
+        <div class="bar-divider"></div>
+        <button id="btnSnapshot" class="btn btn-export" title="匯出當前合成畫面為 PNG 圖片">
+          <span>匯出圖片 (PNG)</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace Container -->
+    <div class="app-container">
+      <!-- Center Canvas Workspace Viewport -->
+      <main class="viewport-container" id="viewport">
+        <!-- Floating Canvas Header Stats -->
+        <div class="viewport-hud-bar" id="hudBar" style="display: none;">
+          <span class="hud-item">FPS <b id="hudFps">60.0</b></span>
+          <span class="hud-sep">/</span>
+          <span class="hud-item">目標 <b id="hudBlobCount">0</b></span>
+          <span class="hud-sep">/</span>
+          <span class="hud-item">模式 <b id="hudMode">EDGES</b></span>
+        </div>
+
+        <!-- Canvas Wrapper -->
+        <div class="canvas-wrapper" id="canvasWrapper">
+          <canvas id="mainCanvas" style="display: none;"></canvas>
+
+          <!-- Initial Empty State Prompt: Directs artist to choose image -->
+          <div class="empty-state" id="emptyState">
+            <div class="empty-card" id="emptyDropArea">
+              <div class="empty-icon-wrap">
+                <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+                  <rect x="3" y="3" width="18" height="18" rx="0"></rect>
+                  <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                  <polyline points="21 15 16 10 5 21"></polyline>
+                </svg>
+              </div>
+              <h2 class="empty-title">選取圖片開始進行 Blob Tracking</h2>
+              <p class="empty-desc">拖曳圖片檔案至此處，或點擊下方按鈕選取本機檔案</p>
+              <button id="btnEmptySelect" class="btn btn-primary btn-large">
+                <span>選擇圖片檔案</span>
+              </button>
+              <div class="empty-meta">支援 PNG, JPG, WebP, GIF, MP4</div>
+            </div>
+          </div>
+
+          <div class="drop-hint" id="dropHint">
+            <div class="drop-box">
+              <span class="drop-title">拖放圖片檔案至此載入</span>
+              <span class="drop-sub">支援 PNG, JPG, WebP, MP4</span>
+            </div>
+          </div>
+          <div class="dropper-indicator" id="dropperIndicator"></div>
+        </div>
+      </main>
+
+      <!-- Right Photoshop-style Collapsible Inspector Sidebar -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <span class="sidebar-title">屬性與效果控制</span>
+          <div class="sidebar-header-actions">
+            <button id="btnCollapseSidebar" class="btn btn-icon" title="收合面板">«</button>
+          </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="sidebar-tabs">
+          <button class="tab-btn active" data-tab="detection">偵測</button>
+          <button class="tab-btn" data-tab="boxes">外框</button>
+          <button class="tab-btn" data-tab="lines">連線</button>
+          <button class="tab-btn" data-tab="regionFX">特效</button>
+          <button class="tab-btn" data-tab="labels">標籤</button>
+          <button class="tab-btn" data-tab="all">全部</button>
+        </div>
+
+        <!-- Scrollable Inspector Panel -->
+        <div class="sidebar-scroll" id="controlsScroll">
+          <!-- 1. Detection -->
+          <div class="group-card" id="card-detection">
+            <div class="group-header">
+              <span class="group-title">1. 偵測模式 (DETECTION)</span>
+              <span class="group-toggle-icon">▼</span>
+            </div>
+            <div class="group-body" id="groupDetection"></div>
+          </div>
+
+          <!-- 2. Blob Boxes -->
+          <div class="group-card" id="card-boxes">
+            <div class="group-header">
+              <span class="group-title">2. 外框樣式 (BLOB BOXES)</span>
+              <span class="group-toggle-icon">▼</span>
+            </div>
+            <div class="group-body" id="groupBoxes"></div>
+          </div>
+
+          <!-- 3. Center Markers -->
+          <div class="group-card" id="card-markers">
+            <div class="group-header">
+              <span class="group-title">3. 中心標記 (CENTER MARKERS)</span>
+              <span class="group-toggle-icon">▼</span>
+            </div>
+            <div class="group-body" id="groupMarkers"></div>
+          </div>
+
+          <!-- 4. Labels -->
+          <div class="group-card" id="card-labels">
+            <div class="group-header">
+              <span class="group-title">4. 座標標籤 (LABELS)</span>
+              <span class="group-toggle-icon">▼</span>
+            </div>
+            <div class="group-body" id="groupLabels"></div>
+          </div>
+
+          <!-- 5. Connection Lines -->
+          <div class="group-card" id="card-lines">
+            <div class="group-header">
+              <span class="group-title">5. 連線網絡 (LINES)</span>
+              <span class="group-toggle-icon">▼</span>
+            </div>
+            <div class="group-body" id="groupLines"></div>
+          </div>
+
+          <!-- 6. Region FX -->
+          <div class="group-card" id="card-regionFX">
+            <div class="group-header">
+              <span class="group-title">6. 區域特效 (REGION FX)</span>
+              <span class="group-toggle-icon">▼</span>
+            </div>
+            <div class="group-body" id="groupRegionFX"></div>
+          </div>
+
+          <!-- 7. Animation -->
+          <div class="group-card" id="card-animation">
+            <div class="group-header">
+              <span class="group-title">7. 動畫掃描 (ANIMATION)</span>
+              <span class="group-toggle-icon">▼</span>
+            </div>
+            <div class="group-body" id="groupAnimation"></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
